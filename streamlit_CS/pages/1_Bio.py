@@ -10,7 +10,7 @@ INTRO = (
     "I like building interactive visualizations and learning new data tools."
 )
 FUN_FACTS = [
-    "I drink five cups of decaf Americano every day.",
+    "I drink five cups of iced decaf Americano every day.",
     "My hamster is four months old.",
     "I always open my fridge just to stare and close it again.",
 ]

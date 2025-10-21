@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.title("☕ Favorite Drinks Pie Chart")
+st.title("☕ Drink Sales Distribution")
 
 DATA_PATH = "data/pie_demo.csv"
 
