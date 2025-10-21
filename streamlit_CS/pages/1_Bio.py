@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title("👋 My Bio")
+st.title("👋 Hello World!")
 
 # ---------- TODO: Replace with your own info ----------
 NAME = "Yujin Kim"
