@@ -4,98 +4,63 @@ import plotly.express as px
 import requests
 import time
 
-st.set_page_config(page_title="Live API Demo", layout="wide")
+st.set_page_config(page_title="Live Crypto Prices", layout="wide")
+st.title("💰 Live Crypto Prices (CoinGecko)")
 
-st.title("📊 Live Streaming API Demos")
-tabs = st.tabs(["💰 CoinGecko Prices", "🌤 Open-Meteo Weather"])
+COINS = ["bitcoin", "ethereum"]
+VS = "usd"
+HEADERS = {
+    "User-Agent": "msudenver-dataviz-class/1.1",
+    "Accept": "application/json",
+    "Cache-Control": "no-cache"
+}
+API_URL = f"https://api.coingecko.com/api/v3/simple/price?ids={','.join(COINS)}&vs_currencies={VS}"
 
+def fetch_prices(url: str):
+    try:
+        resp = requests.get(url, timeout=10, headers=HEADERS)
+        if resp.status_code == 429:
+            return None, "429 Too Many Requests"
+        resp.raise_for_status()
+        data = resp.json()
+        df = pd.DataFrame(data).T.reset_index().rename(columns={"index": "coin"})
+        return df, None
+    except requests.RequestException as e:
+        return None, f"Error: {e}"
 
-# CoinGecko Demo -------------------------------------------------
-with tabs[0]:
-    st.subheader("Live Crypto Prices (CoinGecko)")
+# initialize session history
+if "price_history" not in st.session_state:
+    st.session_state.price_history = pd.DataFrame(columns=["time", "bitcoin", "ethereum"])
 
-    COINS = ["bitcoin", "ethereum"]
-    VS = "usd"
-    HEADERS = {"User-Agent": "msudenver-dataviz-class/1.0", "Accept": "application/json"}
-    API_URL = f"https://api.coingecko.com/api/v3/simple/price?ids={','.join(COINS)}&vs_currencies={VS}"
+refresh_sec = st.slider("Refresh every (sec)", 10, 120, 30)
+auto_refresh = st.toggle("Enable auto refresh", value=False)
 
-    SAMPLE_DF = pd.DataFrame([
-        {"coin": "bitcoin", VS: 68000},
-        {"coin": "ethereum", VS: 3500},
-    ])
+df, err = fetch_prices(API_URL)
 
-    @st.cache_data(ttl=300)
-    def fetch_prices(url: str):
-        try:
-            resp = requests.get(url, timeout=10, headers=HEADERS)
-            if resp.status_code == 429:
-                return None, "429 Too Many Requests"
-            resp.raise_for_status()
-            data = resp.json()
-            df = pd.DataFrame(data).T.reset_index().rename(columns={"index": "coin"})
-            return df, None
-        except requests.RequestException as e:
-            return None, f"Error: {e}"
+if err or df is None:
+    st.error(f"❌ Live API error: {err}")
+else:
+    # store one row per refresh
+    current_time = time.strftime("%H:%M:%S")
+    btc_price = df.loc[df["coin"] == "bitcoin", VS].values[0]
+    eth_price = df.loc[df["coin"] == "ethereum", VS].values[0]
 
-    refresh_sec = st.slider("Refresh every (sec)", 10, 120, 30)
-    auto_refresh = st.toggle("Enable auto refresh", value=False)
+    new_row = {"time": current_time, "bitcoin": btc_price, "ethereum": eth_price}
+    st.session_state.price_history.loc[len(st.session_state.price_history)] = new_row
+    st.session_state.price_history = st.session_state.price_history.tail(12)
 
-    df, err = fetch_prices(API_URL)
-    if err or df is None:
-        st.warning(f"⚠️ Using fallback data: {err}")
-        df = SAMPLE_DF.copy()
-
+    st.subheader("Current Price (USD)")
     st.dataframe(df, use_container_width=True)
-    fig = px.bar(df, x="coin", y=VS, title=f"Current Price ({VS.upper()})")
+
+    fig = px.bar(df, x="coin", y=VS, title="Current Prices (Bar View)")
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"Last updated at {time.strftime('%H:%M:%S')}")
+    st.caption(f"Last updated at {current_time}")
 
-    if auto_refresh:
-        time.sleep(refresh_sec)
-        st.rerun()
+    st.subheader("Recent Price History (Newest First)")
+    hist_df = st.session_state.price_history.iloc[::-1].reset_index(drop=True)
+    st.dataframe(hist_df, use_container_width=True)
+    st.caption("Note: Shows up to 12 most recent refresh intervals.")
 
-
-# Open-Meteo Weather Demo ----------------------------
-with tabs[1]:
-    st.subheader("Hourly Weather Forecast (Open-Meteo)")
-
-    lat, lon = 39.7392, -104.9903  # Denver
-    wurl = (
-        f"https://api.open-meteo.com/v1/forecast?"
-        f"latitude={lat}&longitude={lon}"
-        f"&hourly=temperature_2m,wind_speed_10m"
-        f"&timezone=America/Denver"
-    )
-
-    @st.cache_data(ttl=600)
-    def get_weather():
-        try:
-            r = requests.get(wurl, timeout=10)
-            r.raise_for_status()
-            j = r.json()["hourly"]
-            return pd.DataFrame({
-                "time": pd.to_datetime(j["time"]),
-                "temperature": j["temperature_2m"],
-                "wind": j["wind_speed_10m"]
-            }), None
-        except requests.RequestException as e:
-            return None, f"Error: {e}"
-
-    weather_df, werr = get_weather()
-    if werr or weather_df is None:
-        st.error(f"Weather API error: {werr}")
-    else:
-        st.dataframe(weather_df.tail(24), use_container_width=True)
-        fig = px.line(
-            weather_df,
-            x="time",
-            y="temperature",
-            title="Temperature (°C) Over Time (Hourly)"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Last updated at {time.strftime('%H:%M:%S')}")
-
-        refresh_weather = st.toggle("Auto refresh weather", value=False)
-        if refresh_weather:
-            time.sleep(60)
-            st.rerun()
+if auto_refresh:
+    time.sleep(refresh_sec)
+    st.rerun()
